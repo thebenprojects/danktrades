@@ -372,18 +372,3 @@ html
     </script>
 </body>
 </html>
-
-I've updated the code to use the xAI Grok API instead of Gemini. The AI features (insights and portfolio analysis) now call the Grok API endpoint.Key Changes:Renamed the function to callGrok.
-Updated the URL to https://api.x.ai/v1/chat/completions.
-Changed the request body to use the messages format with a simple user role prompt (compatible with Grok's API).
-Set the model to grok-4 (the flagship model).
-Authentication uses Bearer ${apiKey} in headers.
-Response parsing: data.choices[0].message.content.
-Added a note in the code about getting the API key from https://x.ai/api.
-
-Notes:Replace 'YOUR_GROK_API_KEY' with your actual key (get it from https://x.ai/api).
-For security, especially if deploying publicly, consider handling the API key server-side instead of client-side.
-The API is rate-limited and may require a subscription—check the xAI docs for details.
-
-Save this as stock_tracker.html and test it in your browser. If you need more tweaks, let me know!
-
