@@ -1,0 +1,377 @@
+html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Institutional Stock Terminal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        @keyframes flash-green {
+            0% { background-color: rgba(0, 255, 0, 0.2); }
+            100% { background-color: transparent; }
+        }
+        @keyframes flash-red {
+            0% { background-color: rgba(255, 0, 0, 0.2); }
+            100% { background-color: transparent; }
+        }
+        .flash-green { animation: flash-green 0.5s ease-out; }
+        .flash-red { animation: flash-red 0.5s ease-out; }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        /* Marquee */
+        .marquee { white-space: nowrap; overflow: hidden; }
+        .marquee-content { display: inline-block; animation: marquee 20s linear infinite; }
+        @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 min-h-screen font-mono">
+    <!-- Navbar -->
+    <nav class="bg-gray-800 p-4 flex justify-between items-center shadow-lg">
+        <h1 class="text-2xl font-bold text-green-400">Institutional Stock Terminal</h1>
+        <div class="flex space-x-4">
+            <button id="settingsBtn" class="text-gray-400 hover:text-white"><i data-lucide="settings"></i></button>
+            <button id="technicalsBtn" class="text-gray-400 hover:text-white"><i data-lucide="sliders"></i></button>
+            <button id="analyzeBtn" class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-500">Analyze Portfolio</button>
+        </div>
+    </nav>
+
+    <!-- Ticker Tape -->
+    <div class="bg-gray-800 p-2 marquee">
+        <div id="tickerTape" class="marquee-content text-sm"></div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container mx-auto p-4">
+        <!-- Add Stock Form -->
+        <div class="flex mb-4">
+            <input id="newStock" type="text" placeholder="Enter ticker (e.g., AAPL)" class="bg-gray-800 p-2 rounded-l flex-1">
+            <button id="addBtn" class="bg-green-600 px-4 py-2 rounded-r hover:bg-green-500">Add</button>
+        </div>
+
+        <!-- Data Table -->
+        <div class="overflow-x-auto">
+            <table class="w-full table-auto border-collapse">
+                <thead>
+                    <tr class="bg-gray-700">
+                        <th class="p-2 text-left">Symbol</th>
+                        <th class="p-2 text-right">Price</th>
+                        <th class="p-2 text-right">Change (%)</th>
+                        <th class="p-2 text-right">Volume</th>
+                        <th class="p-2 text-right">Day High</th>
+                        <th class="p-2 text-right">Day Low</th>
+                        <th class="p-2 text-right">Market Cap</th>
+                        <th class="p-2 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="stockTable"></tbody>
+            </table>
+        </div>
+
+        <!-- AI Analysis Modal -->
+        <div id="analysisModal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center">
+            <div class="bg-gray-800 p-6 rounded-lg max-w-lg w-full">
+                <h2 class="text-xl mb-4">Portfolio Analysis</h2>
+                <div id="analysisContent" class="prose prose-invert"></div>
+                <button id="closeAnalysis" class="mt-4 bg-red-600 px-4 py-2 rounded">Close</button>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center">
+            <div class="bg-gray-800 p-6 rounded-lg max-w-lg w-full">
+                <h2 class="text-xl mb-4">Settings</h2>
+                <input id="apiKeyInput" type="text" placeholder="Enter FMP API Key" class="bg-gray-700 p-2 w-full mb-4">
+                <button id="saveKey" class="bg-green-600 px-4 py-2 rounded">Save</button>
+                <button id="closeSettings" class="mt-4 bg-red-600 px-4 py-2 rounded">Close</button>
+            </div>
+        </div>
+
+        <!-- Technicals Modal -->
+        <div id="technicalsModal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center">
+            <div class="bg-gray-800 p-6 rounded-lg max-w-lg w-full">
+                <h2 class="text-xl mb-4">Market Mechanics</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label>Volatility (VIX-like): <span id="volValue">20</span></label>
+                        <input id="volSlider" type="range" min="0" max="100" value="20" class="w-full">
+                    </div>
+                    <div>
+                        <label>Trend Bias (Bear - Bull): <span id="biasValue">0</span></label>
+                        <input id="biasSlider" type="range" min="-50" max="50" value="0" class="w-full">
+                    </div>
+                    <div>
+                        <label>Tick Speed (ms): <span id="speedValue">1500</span></label>
+                        <input id="speedSlider" type="range" min="500" max="5000" step="500" value="1500" class="w-full">
+                    </div>
+                </div>
+                <button id="closeTechnicals" class="mt-4 bg-red-600 px-4 py-2 rounded">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        const stocks = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA'];
+        const stockData = {};
+        let interval;
+        let apiKey = localStorage.getItem('fmpApiKey') || '';
+        const isSimMode = !apiKey;
+        let volatility = 20; // 0-100
+        let trendBias = 0; // -50 to 50
+        let tickSpeed = 1500; // ms
+
+        // Initialize Stock Data
+        function initStocks() {
+            stocks.forEach(symbol => {
+                stockData[symbol] = {
+                    price: Math.random() * 1000 + 100,
+                    prevPrice: 0,
+                    volume: Math.floor(Math.random() * 1e8),
+                    high: 0,
+                    low: Infinity,
+                    marketCap: Math.floor(Math.random() * 1e12)
+                };
+            });
+            renderTable();
+            startUpdates();
+        }
+
+        // Render Table Rows
+        function renderTable() {
+            const tbody = document.getElementById('stockTable');
+            tbody.innerHTML = '';
+            Object.keys(stockData).forEach(symbol => {
+                const data = stockData[symbol];
+                const change = ((data.price - data.prevPrice) / data.prevPrice * 100).toFixed(2);
+                const changeClass = change > 0 ? 'text-green-400' : 'text-red-400';
+                const row = document.createElement('tr');
+                row.id = `row-${symbol}`;
+                row.innerHTML = `
+                    <td class="p-2 border-b border-gray-700">${symbol}</td>
+                    <td class="p-2 border-b border-gray-700 text-right" id="price-${symbol}">${data.price.toFixed(2)}</td>
+                    <td class="p-2 border-b border-gray-700 text-right ${changeClass}">${change}%</td>
+                    <td class="p-2 border-b border-gray-700 text-right">${data.volume.toLocaleString()}</td>
+                    <td class="p-2 border-b border-gray-700 text-right">${data.high.toFixed(2)}</td>
+                    <td class="p-2 border-b border-gray-700 text-right">${data.low.toFixed(2)}</td>
+                    <td class="p-2 border-b border-gray-700 text-right">$${data.marketCap.toLocaleString()}</td>
+                    <td class="p-2 border-b border-gray-700 text-center">
+                        <button class="insightBtn text-blue-400 mr-2" data-symbol="${symbol}"><i data-lucide="zap"></i></button>
+                        <button class="removeBtn text-red-400" data-symbol="${symbol}"><i data-lucide="x"></i></button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+            lucide.createIcons();
+            updateTickerTape();
+        }
+
+        // Update Prices
+        async function updatePrices() {
+            if (apiKey) {
+                // Real Mode
+                const symbols = Object.keys(stockData).join(',');
+                try {
+                    const res = await fetch(`https://financialmodelingprep.com/api/v3/quote/${symbols}?apikey=${apiKey}`);
+                    const data = await res.json();
+                    data.forEach(item => {
+                        const symbol = item.symbol;
+                        if (stockData[symbol]) {
+                            const newPrice = item.price;
+                            stockData[symbol].prevPrice = stockData[symbol].price;
+                            stockData[symbol].price = newPrice;
+                            stockData[symbol].volume = item.volume;
+                            stockData[symbol].high = item.dayHigh;
+                            stockData[symbol].low = item.dayLow;
+                            stockData[symbol].marketCap = item.marketCap;
+                            updateRow(symbol);
+                        }
+                    });
+                } catch (err) {
+                    console.error('FMP API Error:', err);
+                }
+            } else {
+                // Sim Mode
+                Object.keys(stockData).forEach(symbol => {
+                    const data = stockData[symbol];
+                    data.prevPrice = data.price;
+                    const changeFactor = (volatility / 100) * 2; // Max change 2%
+                    const bias = trendBias / 100; // -0.5 to 0.5
+                    const change = (Math.random() - 0.5 + bias) * changeFactor;
+                    data.price *= (1 + change / 100);
+                    data.volume += Math.floor(Math.random() * 1e6 - 5e5);
+                    data.volume = Math.max(0, data.volume);
+                    data.high = Math.max(data.high, data.price);
+                    data.low = Math.min(data.low, data.price);
+                    data.marketCap += Math.floor((Math.random() - 0.5) * 1e10);
+                    data.marketCap = Math.max(0, data.marketCap);
+                    updateRow(symbol);
+                });
+            }
+            updateTickerTape();
+        }
+
+        // Update Single Row
+        function updateRow(symbol) {
+            const data = stockData[symbol];
+            const priceCell = document.getElementById(`price-${symbol}`);
+            if (priceCell) {
+                priceCell.textContent = data.price.toFixed(2);
+                const change = data.price - data.prevPrice;
+                if (change > 0) {
+                    priceCell.parentElement.classList.add('flash-green');
+                } else if (change < 0) {
+                    priceCell.parentElement.classList.add('flash-red');
+                }
+                setTimeout(() => {
+                    priceCell.parentElement.classList.remove('flash-green', 'flash-red');
+                }, 500);
+            }
+            renderTable(); // Re-render to update all fields
+        }
+
+        // Start Update Interval
+        function startUpdates() {
+            clearInterval(interval);
+            updatePrices();
+            interval = setInterval(updatePrices, tickSpeed);
+        }
+
+        // Add Stock
+        document.getElementById('addBtn').addEventListener('click', () => {
+            const symbol = document.getElementById('newStock').value.toUpperCase().trim();
+            if (symbol && !stockData[symbol] && symbol.length <= 5) {
+                stocks.push(symbol);
+                stockData[symbol] = {
+                    price: Math.random() * 1000 + 100,
+                    prevPrice: 0,
+                    volume: Math.floor(Math.random() * 1e8),
+                    high: 0,
+                    low: Infinity,
+                    marketCap: Math.floor(Math.random() * 1e12)
+                };
+                renderTable();
+            }
+            document.getElementById('newStock').value = '';
+        });
+
+        // Remove Stock
+        document.addEventListener('click', e => {
+            if (e.target.closest('.removeBtn')) {
+                const symbol = e.target.closest('.removeBtn').dataset.symbol;
+                delete stockData[symbol];
+                const index = stocks.indexOf(symbol);
+                if (index > -1) stocks.splice(index, 1);
+                renderTable();
+            }
+        });
+
+        // Insight Button
+        document.addEventListener('click', async e => {
+            if (e.target.closest('.insightBtn')) {
+                const symbol = e.target.closest('.insightBtn').dataset.symbol;
+                const data = stockData[symbol];
+                const change = ((data.price - data.prevPrice) / data.prevPrice * 100).toFixed(2);
+                const prompt = `Generate a breaking news headline explaining why ${symbol} stock changed by ${change}% today. Make it realistic.`;
+                const insight = await callGemini(prompt);
+                alert(insight); // Or render in a modal
+            }
+        });
+
+        // Analyze Portfolio
+        document.getElementById('analyzeBtn').addEventListener('click', async () => {
+            const portfolio = Object.entries(stockData).map(([symbol, data]) => `${symbol}: $${data.price.toFixed(2)}`).join(', ');
+            const prompt = `Analyze this portfolio for sector diversity and risk: ${portfolio}. Return in Markdown.`;
+            const analysis = await callGemini(prompt);
+            document.getElementById('analysisContent').innerHTML = marked.parse(analysis);
+            document.getElementById('analysisModal').classList.remove('hidden');
+        });
+        document.getElementById('closeAnalysis').addEventListener('click', () => {
+            document.getElementById('analysisModal').classList.add('hidden');
+        });
+
+        // Settings Modal
+        document.getElementById('settingsBtn').addEventListener('click', () => {
+            document.getElementById('apiKeyInput').value = apiKey;
+            document.getElementById('settingsModal').classList.remove('hidden');
+        });
+        document.getElementById('saveKey').addEventListener('click', () => {
+            apiKey = document.getElementById('apiKeyInput').value;
+            localStorage.setItem('fmpApiKey', apiKey);
+            document.getElementById('settingsModal').classList.add('hidden');
+            startUpdates();
+        });
+        document.getElementById('closeSettings').addEventListener('click', () => {
+            document.getElementById('settingsModal').classList.add('hidden');
+        });
+
+        // Technicals Modal
+        document.getElementById('technicalsBtn').addEventListener('click', () => {
+            document.getElementById('technicalsModal').classList.remove('hidden');
+        });
+        document.getElementById('closeTechnicals').addEventListener('click', () => {
+            document.getElementById('technicalsModal').classList.add('hidden');
+        });
+        document.getElementById('volSlider').addEventListener('input', e => {
+            volatility = e.target.value;
+            document.getElementById('volValue').textContent = volatility;
+        });
+        document.getElementById('biasSlider').addEventListener('input', e => {
+            trendBias = e.target.value;
+            document.getElementById('biasValue').textContent = trendBias;
+        });
+        document.getElementById('speedSlider').addEventListener('input', e => {
+            tickSpeed = e.target.value;
+            document.getElementById('speedValue').textContent = tickSpeed;
+            startUpdates();
+        });
+
+        // Update Ticker Tape
+        function updateTickerTape() {
+            const tape = Object.entries(stockData).map(([symbol, data]) => {
+                const change = ((data.price - data.prevPrice) / data.prevPrice * 100).toFixed(2);
+                const color = change > 0 ? 'text-green-400' : 'text-red-400';
+                return `<span class="mx-4 ${color}">${symbol}: $${data.price.toFixed(2)} (${change}%)</span>`;
+            }).join('');
+            const content = document.getElementById('tickerTape');
+            content.innerHTML = tape + tape; // Duplicate for seamless loop
+        }
+
+        // Gemini API Call
+        async function callGemini(prompt) {
+            const apiKey = 'YOUR_GEMINI_API_KEY'; // Replace with your key or handle securely
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+            const body = {
+                contents: [{ parts: [{ text: prompt }] }]
+            };
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                return data.candidates[0].content.parts[0].text;
+            } catch (err) {
+                console.error('Gemini Error:', err);
+                return 'AI Insight unavailable.';
+            }
+        }
+
+        initStocks();
+    </script>
+</body>
+</html>
+
+This is the complete, self-contained stock_tracker.html file with the institutional upgrades. Save it as an HTML file and open it in your browser to run the terminal.Notes:Simulation Mode: By default, it uses simulated data with the new technical sliders influencing the market behavior.
+Real Mode: Enter your FMP API key in the settings to switch to live data. The sliders only affect simulation mode.
+Gemini API: I've included a placeholder for your Gemini API key in the callGemini function. Replace 'YOUR_GEMINI_API_KEY' with your actual key. Note: For security, consider moving API keys to a backend if deploying publicly.
+Customization: The table is fully responsive and uses a professional, terminal-like design. The ticker tape scrolls smoothly with current prices.
+
+If you'd like further enhancements, such as charting integration (e.g., with Chart.js) or more API features, let me know!
+
